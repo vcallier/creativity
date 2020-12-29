@@ -1,0 +1,229 @@
+---
+title: "The effects of social and economic capital on self-perceptions of creativity"
+author: "Viviane Callier, Ben Graf, Cong Zhang"
+date: "12/4/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+pacman::p_load(pacman, dplyr, olsrr, ggplot2, glmnet, leaps, car, MASS)
+load("/Users/vc12/Documents/UTSA statistics/DataMining-fall2020/project/ICPSR_37853 3/DS0001/cleandata2.RData")
+df <- creativity
+
+```
+ 
+# Introduction
+
+Creativity has been regarded as a unique human capability to generate novel ideas and solutions (Abraham, 2016), and it manifests in different domains like arts and science. Psychologists have also developed the concept of “everyday creativity”, referring to the ability to innovatively deal with the daily routines such as getting enough to eat (Richards, 2007).
+
+While a lot of studies focused on the effect of individual characteristics on creativity (Artola et al., 2012) and how creativity is determined by personal traits and social factors in a contextual process (Da et al., 2015), the findings are still mixed.  For instance, some researchers claim females score higher on verbal creativity and males score higher on figural creativity (DeMoss, Milich, & DeMers, 1993), whereas the exact opposite results have also been found (Chan et al., 2001). 
+
+This project aims to use the “Self-Perceptions of Creativity & Arts Participation” (Novak-Leonard et al., 2018) survey data to further explore factors associated with creativity. We will focus on three domains of creativity, Artistic, STEM, and Social/Business/Daily/Community (SBDC) creativity. We set out with the following primary research question:  
+
+<br>*What are the effects of social and economic capital on self-assessed creativity across these three domains?*
+
+We plan to use multiple linear regression with stepwise selection, as well as Lasso, to identify the social and economic capital predictors most associated with each of the three domains.
+
+# Data Structure
+
+Our analysis uses data from “Self-Perceptions of Creativity & Arts Participation, United States, 2018.” This survey recruited 3,447 participants via web or telephone. The sample represents civilian, non-institutionalized adults nationwide.  The raw dataset contains 258 variables, but we do not make use of all of them.  We selected the following variables as representations of self-perceived creativity:  
+
+### Q4. Compared to people of approximately your age and life experience, how creative would you rate yourself for each of the following activities: 
+
+### Artistic (Q4A-F)  
+A - Making up lyrics to a song  
+B - Composing an original song  
+C - Making up dance moves  
+D - Creating or modifying your own clothing  
+E - Writing a poem  
+F - Designing a sculpture or piece of pottery  
+
+### Science/math/engineering (Q4G-M)   
+G - Solving math puzzles  
+H - Taking apart machines or engines and figuring out how they work  
+I  - Figuring out how to fix a frozen or buggy computer  
+J - Thinking of a new invention  
+K - Building something mechanical, like a robot  
+L - Drawing up designs or creating instructions for how to build something  
+M - Designing a way to test a hypothesis or idea   
+
+### Social (Q4N-X)  
+N - Communicating with people from different cultures  
+O - Helping other people cope with a difficult situation  
+P - Teaching someone how to do something  
+Q - Thinking of a polite way to tell someone about a flaw or bad habit  
+R - Planning a trip or event with friends or family that meets everyone's needs  
+S - Mediating a dispute or argument between two friends  
+T - Delegating work to people and inspiring them to complete it  
+U - Getting people to feel relaxed and at ease  
+V - Persuading someone to do something  
+W - Persuading someone to buy something  
+X - Leading a group project  
+
+### Sales and business (Q4Y-AD)
+Y - Figuring out new ways to save money  
+Z - Launching a new business  
+AA - Delivering an engaging presentation or speech in front of a group of people  
+AB - Pitching your ideas to other people  
+AC - Finding new ways to get things done more efficiently  
+AD - Thinking of many different solutions to a problem  
+
+### Daily life problem solving (Q4AE-AQ)  
+AE - Creating a tasty meal out of scattered leftovers   
+AF - Figuring out a new way home to avoid traffic  
+AG - Decorating a room  
+AH - Capturing your feelings or ideas in a journal or blog  
+AI - Delivering a punch line of a joke  
+AJ - Finding new things to do when you are bored  
+AK - Imagining what something you have never seen looks like, such as a space alien  
+AL - Making up an original bedtime story to tell a child  
+AM - Finding new ways to motivate yourself to do something unpleasant  
+  
+### Community leadership  
+AN - Getting others in your community involved to try to solve some community problems  
+AO - Approaching a person of influence in your community about some needs or problems   
+AP - Organizing a petition, a protest rally or march, or the boycott of a product  
+AQ - Raising awareness about causes you care about within your community  
+
+These 43 variables had five-tiered responses ranging from “Much more creative” to “Much less creative”.  They were adapted from the 94-item Kaufman Domains of Creativity Scale (KDOCS) and grouped by the survey authors.  A previous research paper examining this dataset (Novak-Leonard et al., 2020) looked at the correlation between domains and found the following:
+
+![Self-perceptions of creativity, correlations between domains. From Novak-Leonard et al., 2020.](correlation.png)
+
+Based on this result, we opted to combine the Social, Business, Daily, and Community domains, which were highly correlated, into a single SBDC domain.  For each of our (now) three domains, we scored each variable from a 5 for “Much more creative” down to a 1 for “Much less creative” and averaged the results for all questions within the domain to create a creativity index for each domain.  These three variables, Artistic creativity index, STEM creativity index, and SBDC creativity index, are our response variables for all future models.  
+
+We wanted to examine these responses against predictors in the realm of social and economic capital.  After reviewing the dataset, we selected the following:
+
+Q5A - Do you know anyone who can loan you a large sum of money?   
+Q5B - Do you know anyone who can provide a place to stay for a week if you have to leave your home temporarily?  
+Q5C - Do you know anyone who can give advice concerning a conflict with a family member?  
+Q5D - Do you know anyone who can give a good reference when you are applying for a job?  
+Q5E - Do you know anyone who can babysit any children you may have?  
+Q5F - Do you know anyone who can give you money for a week in case of an emergency?  
+Q5G - Do you know anyone who can help you repair a bike or car?  
+Q5H - Do you know anyone who is sometimes in the position to hire people?  
+Q5I - Do you know anyone who can do your grocery shopping if you and your household members are ill?  
+Q5J - Do you know anyone who works in your local government?  
+Q5K - Do you know anyone who knows a lot about financial matters (taxes, loans)?  
+Q5L - Do you know anyone who can give advice on matters of law (problems with landlords, going to court, etc.)?  
+Q5M - Do you know anyone who has good contacts with a newspaper, radio, TV station or blogger?  
+EDUC - Highest degree received  
+EMPLOY - Current employment status  
+INCOME - Household income  
+INTERNET - Household internet access  
+HOUSING - Home ownership  
+Q1A - Were you born in one of the 50 states of the United States?  
+Q1B - Were both your parents born within the 50 states of the United States?  
+MARITAL - Marital status  
+HH01 - Number of household members age 0-1  
+HH25 - Number of household members age 2-5  
+HH612 - Number of household members age 6-12  
+HH1317 - Number of household members age 13-17  
+HH18OV - Number of household members age 18+  
+
+Many of these variables required some minor manipulation to be of practical use for our analysis, but the primary focus was on the 13 Q5 questions.  Actually, each of these 13 started as 7 separate variables (“No”, “Yes, a friend”, “Yes, a family member”, “Don’t know”, etc.) that we combined into a single variable with either “Yes”, “No”, or a missing value.  These 13 questions all measure different forms of social help available to the respondent, so we created an index for these as well.  It simply sums the number of “Yes” answers to the 13 questions.  We called it the Social Help Index (SHI).  In our analysis, we alternately built models using either the 13 raw Q5 predictors or the single SHI index.
+
+Finally, we included three additional control variables which required minor manipulation:  
+
+GENDER - Respondent gender   
+AGE7 - Age, grouped into seven bins   
+RACETHNICITY - Combined race/ethnicity   
+
+With our analysis dataset now containing 33 variables, we next looked at missing values, ultimately deciding to drop all observations containing at least one.  (The exception was in the three creativity indices, which had already ignored missing values in averaging their respective Q4 responses.)  This left us with 3,279 observations.  
+
+# Statistical Method  
+
+We used multiple linear regression to model Artistic, STEM, and SBDC creativity as a function of the predictors of socio-economic capital, excluding SHI for now. Our regressions were significant but had low $R^2$ values, which is fairly common in social science research. Even though the $R^2$ values are low, we found significant predictors in each regression.  
+
+Domain | Q5 Model Adjusted $R^2$ | SHI Model Adjusted $R^2$
+-|-|-
+Artistic | 0.1124 | 0.0885
+STEM | 0.1448 | 0.1320
+SBDC | 0.1810 | 0.1524
+
+Examination of the residuals in all three regressions showed that they are not normally distributed and do not have constant variance. There was no obvious transformation to normalize the data. We proceeded with our analysis on untransformed data. While the variable selection procedure is robust to normality assumptions, we were cautious not to rely on any generated p-values, as inference is sensitive to the normality assumption. 
+
+```{r fig.width=10, fig.height=5}
+stem.fit.all <- lm(stem ~ . -artistic -sbd -SHI, data = creativity)
+par(mfrow=c(1,2))
+plot(stem.fit.all, which=1:2)
+```
+
+
+We performed thorough influence diagnostics including Studentized deleted residuals, Hat diagonals, Cook’s Distance, DFFITS, and DFBETAS, ultimately deciding to remove outliers whose Studentized deleted residuals exceeded ±3; there were 32 in total.
+
+After deleting the outliers, we ran six regressions, two for each domain of creativity. In the first set of three, we used the 13 predictors of socio-economic capital. In the second set of three, we replaced those 13 predictors with the SHI. 
+
+Next, we conducted a variable selection procedure for each of the six regressions. First, we used the stepwise regression ($p_{enter} = 0.05, p_{remain} = 0.10$). Then, we used the Lasso method. For the Lasso, we identified the best (minimum) $\lambda$ and then used $\lambda$ + 1 s.e. to select the variables. We compared the results from the two methods. We also compared the predictors that were selected within each domain of creativity. The Lasso procedure with $\lambda_{1se}$ was the most selective of the methods we tried, so we decided to focus our analysis on the results from that approach. 
+ 
+# Results and Discussion
+
+The tables below show the variables selected and their associated regression coefficient estimates using the Lasso procedure with $\lambda_{1se}$. First we address the version of the model with the 13 individual Q5 questions included (and no SHI). Next we look at the models with SHI.
+
+![Lasso selected variables and coefficient estimates for the model with all Q5 predictors](Table1.png)  
+
+      
+
+![Lasso selected variables and coefficient estimates for the model with SHI](table2.png)  
+
+
+
+
+\newpage
+
+Our summary index, SHI, was a positive predictor of creativity in each of the three domains. The other selected variables were remarkably similar in all three domains when compared to the Q5 versions of the model.
+
+When using the Q5 model, the four questions selected that predicted creativity in all three domains were:  
+
+* Q5H. Do you know anyone who is sometimes in the position to hire people?   
+* Q5K. Do you know anyone who knows a lot about financial matters (taxes, loans)?   
+* Q5L. Do you know anyone who can give advice on matters of law (problems with landlords, going to court, etc.)?   
+* Q5M. Do you know anyone who has good contacts with a newspaper, radio, TV station or blogger?   
+
+Respondents who answered yes to any of these questions were more likely to describe themselves as more creative in all of the domains.  Interestingly, these four questions all involve the use of professional contacts.  Not all of the 13 social help questions focused on professional help.  One involved knowing someone who could babysit your children on short notice, for example.  As these questions seem more geared toward solving daily life problems, they might be expected to be related to SBDC creativity. However, the link to Artistic and STEM creativity is harder to identify.  (Knowing people in the media makes sense for artists, but the others?)  It seems access to these resources may in general indicate access to more social capital, and that is associated with higher self-perceived creativity. 
+
+Perhaps the most fascinating findings were a handful of predictors that were positively associated with creativity in one domain and negatively associated with creativity in another domain.   
+
+* Male gender was negatively associated with Artistic creativity and positively associated with STEM creativity. This plays into the (debunked) stereotype that males are better in STEM fields.    
+* Age was negatively associated with STEM creativity and positively associated with SBDC creativity.  The latter makes sense, but why the former?  Perhaps there is the perception of losing touch with fast-changing technical fields?  
+* Being Asian increased one’s self-perceived Artistic creativity, relative to Whites (the baseline), but decreased SBDC creativity.  This was the only race/ethnic group that showed such a difference across domains.  
+
+When looking at the Artistic domain in isolation, we found it to be positively associated with knowing someone who can loan money, knowing someone who can advise on family conflicts, and with not working.  We found it to be negatively associated with working or being retired, with income, with having internet access, and with owning or renting your residence (as opposed to occupying it without paying rent or mortgage).  
+
+The STEM domain had the fewest variables selected, and the only one we have not already addressed was a positive association with knowing someone who can repair a bike or car.  
+
+For the SBDC domain, we saw positive relationships with several of the social help questions, specifically those related to loaning money, family conflicts, a good job reference, and someone in local government.  The last two line up well with the Business and Community/Civic aspects of this domain.  This was also the only domain where education was selected; the relationship with SBDC creativity was positive as well.  The only other negative association to report was with one’s parents not being immigrants.  For respondents whose parents were both immigrants, they tended to rate themselves higher in SBDC creativity.  
+
+We also had three variables in our models that were not selected by any of the six Lasso procedures.  Those were the respondent’s own immigrant status, their marital status, and the number of children (4 separate variables with different age ranges) and adults in the household.  
+
+Several of the findings fall in line with classic stereotypes and biases.  That the artistic domain has negative associations with working, income, and paying for one’s residence brings to mind the “starving artist” stereotype.  That age is negatively associated with STEM creativity calls forth the idea that mathematical breakthroughs are often made early in one’s career.  This suggests that these stereotypes and biases have been internalized.  In other words, we don't just categorize other people as "starving artists" or brilliant scientific "wunderkinds" -- we see ourselves through the same biases.   
+
+There is ample reason to believe that people's self-perceptions may not match reality. For example, the Dunning-Kruger effect is a cognitive bias in which people who are not good at a skill overestimate their ability because they are not aware of their lack of ability. Meanwhile, people who are actually quite skilled become more aware of how much they could improve even further, and so they may underestimate their true ability. Because of this cognitive bias, we cannot assume that people's self-assessed creativity matches their actual creativity.  
+
+In general, it is useful to become aware of these stereotypes and biases through which we see ourselves, because this can impact a person's choice of field of study or choice of profession. In short, the more we can become aware of subtle biases in how we see ourselves, the better we will be able to develop our true talents and skills.  
+ 
+# Limitations
+* Our data violate normality assumptions; inferences about the significance of the predictors may not be correct.  That said, we avoided relying on such significance measures in our findings.  
+* For our regressions, the $R^2$ was less than 0.20. That means there is a significant amount of variation in self-perceived creativity that is not explained by the variables in our model. However, in each case, we were able to identify significant predictors of self-perceived creativity, in spite of the low $R^2$.  
+* We are modeling self-perceptions of creativity -- not actual creativity.  
+ 
+ 
+# References
+Abraham, A. (2016). Gender and creativity: an overview of psychological and neuroscientific literature. *Brain imaging and behavior*, 10(2), 609-618.
+ 
+Chan, D. W., Cheung, P. C., Lau, S., Wu, W. Y., Kwong, J. M., & Li, W. L. (2001). Assessing ideational fluency in primary students in Hong Kong. *Creativity Research Journal*, 13(3-4), 359-365.
+ 
+Da Costa, S., Páez, D., Sánchez, F., Garaigordobil, M., & Gondim, S. (2015). Personal factors of creativity: A second order meta-analysis. *Revista de Psicología del Trabajo y de las Organizaciones*, 31(3), 165-173.
+ 
+DeMoss, K., Milich, R., & DeMers, S. (1993). Gender, creativity, depression, and attributional style in adolescents with high academic ability. *Journal of Abnormal Child Psychology*, 21(4), 455-467.
+ 
+Novak-Leonard, Jennifer, Rugg, Gwendolyn, Robinson, Megan, and Bradburn, Norman. Self-Perceptions of Creativity & Arts Participation, United States (2018). Inter-university Consortium for Political and Social Research [distributor], 2020-10-21. https://doi.org/10.3886/ICPSR37853.v1.
+
+Novak-Leonard, Jennifer L., Robinson, Megan, Rugg, Gwen Initial Findings from a National Survey of Self-Perceptions of Creativity. Working Paper (2020). Nashville, TN: National Endowment for the Arts, The Arts, Creativity, Cognition, and Learning Research Lab.
+
+Richards, R. E. (2007). *Everyday creativity and new views of human nature: Psychological, social, and spiritual perspectives* (pp. xiii-349). American Psychological Association.
+ 
+94-item Kaufman Domains of Creativity Scale (KDOCS), http://psycnet.apa.org/record/ 2012-27364-001.

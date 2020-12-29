@@ -1,0 +1,694 @@
+---
+title: 'APPENDIX: Complete code and analysis'
+author: "Viviane Callier, Ben Graf, Cong Zhang"
+date: "Due 6 Dec 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(pacman, dplyr, olsrr, ggplot2, glmnet, leaps, car, MASS)
+
+load("/Users/Ben/Library/Mobile Documents/com~apple~CloudDocs/Documents/UTSA Master's/Semester 3/STA 6923 Statistical Learning/Project/ICPSR_37853/DS0001/cleandata2.RData")
+df <- creativity
+```
+
+# Data Exploration
+
+```{r}
+# Linear regressions using all predictors except SHI
+
+art.fit.all <- lm(artistic ~ . -stem -sbd -SHI, data = creativity)
+summary(art.fit.all)     
+stem.fit.all <- lm(stem ~ . -artistic -sbd -SHI, data = creativity)
+summary(stem.fit.all) 
+sbd.fit.all <- lm(sbd ~ . -artistic -stem -SHI, data = creativity)
+summary(sbd.fit.all) 
+```
+
+```{r}
+#anovas 
+
+anova(art.fit.all)
+anova(stem.fit.all)
+anova(sbd.fit.all)
+```
+
+```{r}
+# Linear regressions using SHI instead of Q5variables
+
+art.fit.shi <- lm(artistic ~ SHI + EDUC + EMPLOY + INCOME + INTERNET + HOUSING + Q1A + Q1B + MARRIEDPARTNER + HH01 + HH25 + HH612 + HH1317 + HH18OV + GENDER + AGE + RACETHNICITY, data = creativity)
+summary(art.fit.shi)     
+stem.fit.shi <- lm(stem ~ SHI + EDUC + EMPLOY + INCOME + INTERNET + HOUSING + Q1A + Q1B + MARRIEDPARTNER + HH01 + HH25 + HH612 + HH1317 + HH18OV + GENDER + AGE + RACETHNICITY, data = creativity)
+summary(stem.fit.shi) 
+sbd.fit.shi <- lm(sbd ~ SHI + EDUC + EMPLOY + INCOME + INTERNET + HOUSING + Q1A + Q1B + MARRIEDPARTNER + HH01 + HH25 + HH612 + HH1317 + HH18OV + GENDER + AGE + RACETHNICITY, data = creativity)
+summary(sbd.fit.shi) 
+```
+
+```{r}
+#anovas for the models with SHI 
+
+anova(art.fit.shi)
+anova(stem.fit.shi)
+anova(sbd.fit.shi)
+```
+
+
+# Investigation: Normality assumptions and multicollinearity
+Examine scatter plots to check assumptions and determine if transformation is needed. 
+Identify potential outliers. 
+
+```{r}
+#plotting residuals 
+plot(art.fit.all)
+
+#histogram of artistic scores
+sresid.art <- studres(art.fit.all)
+hist(sresid.art, freq=FALSE, breaks = 100)
+
+#tests for normality and constant variance.
+ols_test_normality(art.fit.all)
+ncvTest(art.fit.all)
+
+```
+```{r}
+#plotting residuals 
+plot(stem.fit.all)
+
+sresid.stem <- studres(stem.fit.all)
+hist(sresid.stem, freq=FALSE, breaks = 100)
+
+ols_test_normality(stem.fit.all)
+ncvTest(stem.fit.all)
+```
+```{r}
+#plotting residuals 
+plot(sbd.fit.all)
+
+sresid.sbd <- studres(sbd.fit.all)
+hist(sresid.sbd, freq=FALSE, breaks = 100)
+
+ols_test_normality(sbd.fit.all)
+ncvTest(sbd.fit.all)
+
+```
+
+```{r}
+#checking for multicollinearity  
+vif(art.fit.all)
+vif(stem.fit.all)
+vif(sbd.fit.all)
+vif(art.fit.shi)
+vif(stem.fit.shi)
+vif(sbd.fit.shi)
+```
+
+Look at pairwise scatterplots of creativity indices against only numeric predictors.
+```{r fig.width=10, fig.height=10}
+pairs(creativity[,c(1,17:18,20,26:30,32)])
+pairs(creativity[,c(2,17:18,20,26:30,32)])
+pairs(creativity[,c(3,17:18,20,26:30,32)])
+```
+Look at correlation matrix of numeric variables:
+
+```{r}
+cor(creativity[,c(1:3,17:18,20,26:30,32)])
+```
+
+The data for art, stem, and sbd do not comply with the normality assumption. Not sure if there is an easy transformation we can use to fix this.  
+
+# Outliers
+Look at outliers:
+```{r}
+#Studentized residuals
+ols_plot_resid_stud(art.fit.all)
+#ols_plot_resid_stud_fit(sbd.slim)
+
+(art.q5.rstudent <- unname(which(abs(rstudent(art.fit.all))>3)))
+(art.shi.rstudent <- unname(which(abs(rstudent(art.fit.shi))>3)))
+(stem.q5.rstudent <- unname(which(abs(rstudent(stem.fit.all))>3)))
+(stem.shi.rstudent <- unname(which(abs(rstudent(stem.fit.shi))>3)))
+(sbd.q5.rstudent <- unname(which(abs(rstudent(sbd.fit.all))>3)))
+(sb.shi.rstudent <- unname(which(abs(rstudent(sbd.fit.shi))>3)))
+
+outliers <- unique(c(art.q5.rstudent, art.shi.rstudent, stem.q5.rstudent, stem.shi.rstudent, sbd.q5.rstudent, sb.shi.rstudent))
+
+```
+
+```{r}
+#Bonferroni outlier test with alpha = 0.05
+outlierTest(sbd.fit.all, cutoff = 0.05)
+```
+
+```{r}
+#Hat matrix criterion. observations with hii > 2*(p+1)/n are considered outliers. 
+
+hatmatrix = lm.influence(sbd.fit.all)$hat
+hat.diagonals = hatvalues(sbd.fit.all) 
+p <- 13
+n <- nrow(df)
+which(hat.diagonals>2*(p+1)/n)
+```
+
+
+The rule of thumb is that an observation is influential if DFFITS exceeds 1 for small to medium datasets and 2sqrt((P+1)/n) for large datasets.
+
+```{r}
+#outliers based on DFFITS
+which(abs(dffits(sbd.fit.all)) > 2*sqrt((p+1)/n))
+ols_plot_dffits(sbd.fit.all)
+```
+
+Rule of thumb: consider a case influential if the absolute DFBETAS exceeds 1 for small to medium data and 2/sqrt(n) for large data. 
+
+```{r}
+# outliers based on DFBETAS
+dfbetas.sbd <- dfbetas(sbd.fit.all)
+dfbetas.boolean <- abs(dfbetas.sbd) > 2/sqrt(n)
+dfbetas.boovec <- rowSums(dfbetas.boolean)
+dfbetas.outvec <- which(dfbetas.boovec>0)
+length(dfbetas.outvec)
+#ols_plot_dfbetas(sbd.fit.all)
+```
+
+The rule of thumb for Cook's distance is that a point is influential if Cook's distance is larger than 0.50. 
+```{r}
+# outliers based on Cook's Distance
+cooks.sbd <- cooks.distance(sbd.fit.all)
+which(cooks.sbd > 0.5)
+ols_plot_cooksd_chart(sbd.fit.all)
+```
+
+Delete outliers:  Only those observations with Studentized deleted residuals beyond +/- 3 for at least one of the six models tested will be deleted.
+```{r}
+df <- creativity <- creativity[-outliers,]
+
+#Quick test
+art.fit.all.2 <- lm(artistic ~ . -stem -sbd -SHI, data = creativity)
+(art.q5.rstudent.2 <- unname(which(abs(rstudent(art.fit.all.2))>3)))   #Previously had 583 and 3068 as outliers; now should see none
+```
+
+
+
+# Variable Selection
+
+## SBD
+Variable selection using best subset selection 
+```{r}
+
+#regfit.full=regsubsets(sbd ~ . -artistic -stem, data = creativity)
+#summary(regfit.full)
+
+```
+The best subset procedure takes too long with so many predictors. R cannot do it. Moving on to stepwise method. 
+
+
+Variable selection using stepwise regression
+
+```{r}
+sbd.stepwise = ols_step_both_p(sbd.fit.all, pent = 0.05, prem = 0.1)
+sbd.stepwise
+```
+
+
+
+Variable selection using Lasso for the full model. 
+```{r}
+x=model.matrix(sbd ~ . -artistic -stem - SHI, data = creativity)[,-1]
+y=creativity$sbd
+
+grid=10^seq(10,-2,length=100)
+```
+
+Splitting the data into training and validation sets, doing the Lasso, and cross-validation.
+```{r}
+set.seed(1)
+train=sample(1:nrow(x), nrow(x)/2)
+test=(-train)
+y.test=y[test]
+```
+
+```{r}
+lasso.mod=glmnet(x[train,],y[train], alpha = 1, lambda = grid)
+plot(lasso.mod)
+```
+
+Performing cross validation and computing the test error. 
+
+```{r}
+set.seed(1)
+cv.out=cv.glmnet(x[train,],y[train],alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+lasso.pred = predict(lasso.mod, s=bestlam, newx=x[test,])
+mean((lasso.pred-y.test)^2)
+
+```
+
+Let's see which of the lasso model coefficient estimates are zero and which ones remain. 
+```{r}
+out = glmnet(x,y, alpha=1, lambda = grid)
+lasso.coef=predict(out, type="coefficients", s=bestlam)[1:37,]
+c(sum(lasso.coef==0), sum(lasso.coef!=0))
+#lasso.coef[lasso.coef==0]
+lasso.coef[lasso.coef!=0]
+
+```
+
+
+Let's compare using lambda.min with lambda.1se.
+```{r}
+lam1se <- cv.out$lambda.1se
+lasso.pred2 = predict(lasso.mod, s=lam1se, newx=x[test,])
+mean((lasso.pred2-y.test)^2)
+lasso.coef2=predict(out, type="coefficients", s=lam1se)[1:37,]
+c(sum(lasso.coef2==0), sum(lasso.coef2!=0))
+#lasso.coef2[lasso.coef2==0]
+lasso.coef2[lasso.coef2!=0]
+```
+  
+
+
+Let's run a model using just the variables resulting from lasso with lambda.1se to see which variables are significant.  (These will NOT be the lasso coefficients.)
+```{r}
+sbd.slim <- lm(sbd ~ Q5A + Q5C + Q5D + Q5H + Q5J + Q5K + Q5L + Q5M + EDUC + Q1B + HH18OV + AGE + RACETHNICITY, data = creativity)
+summary(sbd.slim)
+#plotting residuals 
+plot(sbd.slim)
+ols_plot_resid_stud_fit(sbd.slim)
+#tests for normality and constant variance.
+ols_test_normality(sbd.slim)
+ncvTest(sbd.slim)
+#checking for multicollinearity in sbd data. 
+vif(sbd.slim)
+#anova
+anova(sbd.slim)
+```
+
+
+
+## Artistic
+
+Let's do stepwise on artistic now:
+```{r}
+(art.stepwise = ols_step_both_p(art.fit.all, pent = 0.05, prem = 0.1))
+```
+
+Let's do lasso on artistic now:
+```{r}
+x=model.matrix(artistic ~ . -sbd -stem - SHI, data = creativity)[,-1]
+y=creativity$artistic
+lasso.mod=glmnet(x[train,],y[train], alpha = 1, lambda = grid)
+plot(lasso.mod)
+```
+
+```{r}
+set.seed(1)
+cv.out=cv.glmnet(x[train,],y[train],alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+lasso.pred = predict(lasso.mod, s=bestlam, newx=x[test,])
+mean((lasso.pred-y.test)^2)
+```
+
+Let's see which of the lasso model coefficient estimates are zero and which ones remain. 
+```{r}
+out = glmnet(x,y, alpha=1, lambda = grid)
+lasso.coef=predict(out, type="coefficients", s=bestlam)[1:37,]
+c(sum(lasso.coef==0), sum(lasso.coef!=0))
+lasso.coef[lasso.coef==0]
+lasso.coef[lasso.coef!=0]
+```
+
+
+
+Let's compare using lambda.min with lambda.1se.
+```{r}
+lam1se <- cv.out$lambda.1se
+lasso.pred2 = predict(lasso.mod, s=lam1se, newx=x[test,])
+mean((lasso.pred2-y.test)^2)
+lasso.coef2=predict(out, type="coefficients", s=lam1se)[1:37,]
+c(sum(lasso.coef2==0), sum(lasso.coef2!=0))
+lasso.coef2[lasso.coef2==0]
+lasso.coef2[lasso.coef2!=0]
+```
+
+
+Let's run a model using just the variables resulting from lasso with lambda.1se to see which variables are significant.  (These will NOT be the lasso coefficients.)
+```{r}
+art.slim <- lm(artistic ~ Q5C + Q5H + Q5L + Q5M + EMPLOY + INCOME + HOUSING + GENDER + RACETHNICITY, data = creativity)
+summary(art.slim)
+#plotting residuals 
+plot(art.slim)
+ols_plot_resid_stud_fit(art.slim)
+#tests for normality and constant variance.
+ols_test_normality(art.slim)
+ncvTest(art.slim)
+#checking for multicollinearity in sbd data. 
+vif(art.slim)
+anova(art.slim)
+```
+
+## STEM
+
+Let's do stepwise on STEM now:
+```{r}
+(stem.stepwise = ols_step_both_p(stem.fit.all, pent = 0.05, prem = 0.1))
+```
+
+Let's do lasso on STEM now:
+```{r}
+x=model.matrix(stem ~ . -artistic -sbd - SHI, data = creativity)[,-1]
+y=creativity$stem
+lasso.mod=glmnet(x[train,],y[train], alpha = 1, lambda = grid)
+plot(lasso.mod)
+```
+
+```{r}
+set.seed(1)
+cv.out=cv.glmnet(x[train,],y[train],alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+lasso.pred = predict(lasso.mod, s=bestlam, newx=x[test,])
+mean((lasso.pred-y.test)^2)
+```
+
+Let's see which of the lasso model coefficient estimates are zero and which ones remain. 
+```{r}
+out = glmnet(x,y, alpha=1, lambda = grid)
+lasso.coef=predict(out, type="coefficients", s=bestlam)[1:37,]
+c(sum(lasso.coef==0), sum(lasso.coef!=0))
+lasso.coef[lasso.coef==0]
+lasso.coef[lasso.coef!=0]
+```
+
+
+Let's compare using lambda.min with lambda.1se.
+```{r}
+lam1se <- cv.out$lambda.1se
+lasso.pred2 = predict(lasso.mod, s=lam1se, newx=x[test,])
+mean((lasso.pred2-y.test)^2)
+lasso.coef2=predict(out, type="coefficients", s=lam1se)[1:37,]
+c(sum(lasso.coef2==0), sum(lasso.coef2!=0))
+lasso.coef2[lasso.coef2==0]
+lasso.coef2[lasso.coef2!=0]
+```
+
+
+
+Let's run a model using just the variables resulting from lasso with lambda.1se to see which variables are significant.  (These will NOT be the lasso coefficients.)
+```{r}
+stem.slim <- lm(stem ~ Q5G + Q5H + Q5L + Q5M + GENDER + AGE, data = creativity)
+summary(stem.slim)
+#plotting residuals 
+plot(stem.slim)
+ols_plot_resid_stud_fit(stem.slim)
+#tests for normality and constant variance.
+ols_test_normality(stem.slim)
+ncvTest(stem.slim)
+#checking for multicollinearity in sbd data. 
+vif(stem.slim)
+anova(stem.slim)
+```
+
+# Investigation of the models using SHI.  
+
+Examining residuals for the models with SHI. 
+```{r}
+#plotting residuals for the art model with SHI
+plot(art.fit.shi)
+
+#histogram of artistic scores
+sresid.art <- studres(art.fit.shi)
+hist(sresid.art, freq=FALSE, breaks = 100)
+
+#tests for normality and constant variance.
+ols_test_normality(art.fit.shi)
+ncvTest(art.fit.shi)
+
+```
+
+```{r}
+#plotting residuals for the stem model with SHI
+plot(stem.fit.shi)
+
+sresid.stem <- studres(stem.fit.shi)
+hist(sresid.stem, freq=FALSE, breaks = 100)
+
+ols_test_normality(stem.fit.shi)
+ncvTest(stem.fit.shi)
+```
+
+```{r}
+#plotting residuals for sbd model with SHI 
+plot(sbd.fit.shi)
+
+sresid.sbd <- studres(sbd.fit.shi)
+hist(sresid.sbd, freq=FALSE, breaks = 100)
+
+ols_test_normality(sbd.fit.shi)
+ncvTest(sbd.fit.shi)
+
+```
+
+# Variable selection for models with SHI. 
+
+## SBD
+Stepwise regression for sbd
+```{r}
+#SBD stepwise regression with the SHI model
+sbd.stepwise.shi = ols_step_both_p(sbd.fit.shi, pent = 0.05, prem = 0.1)
+sbd.stepwise.shi
+```
+
+Lasso regression for sbd
+
+```{r}
+x=model.matrix(sbd ~ . -artistic -stem - Q5A - Q5B - Q5C - Q5D - Q5E - Q5F - Q5G - Q5H -Q5I - Q5J - Q5K - Q5L - Q5M, data = creativity)[,-1]
+y=creativity$sbd
+
+grid=10^seq(10,-2,length=100)
+```
+
+Splitting the data into training and validation sets, doing the Lasso, and cross-validation.
+```{r}
+set.seed(1)
+train=sample(1:nrow(x), nrow(x)/2)
+test=(-train)
+y.test=y[test]
+```
+
+```{r}
+lasso.mod=glmnet(x[train,],y[train], alpha = 1, lambda = grid)
+plot(lasso.mod)
+```
+
+Performing cross validation and computing the test error. 
+
+```{r}
+set.seed(1)
+cv.out=cv.glmnet(x[train,],y[train],alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+lasso.pred = predict(lasso.mod, s=bestlam, newx=x[test,])
+mean((lasso.pred-y.test)^2)
+
+```
+
+Let's see which of the lasso model coefficient estimates are zero and which ones remain. 
+```{r}
+out = glmnet(x,y, alpha=1, lambda = grid)
+lam1se <- cv.out$lambda.1se
+lasso.coef=predict(out, type="coefficients", s=lam1se)[1:25,]
+c(sum(lasso.coef==0), sum(lasso.coef!=0))
+lasso.coef[lasso.coef==0]
+lasso.coef[lasso.coef!=0]
+```
+
+
+
+Let's run a model using just the variables resulting from lasso with lambda.1se to see which variables are significant.  (These will NOT be the lasso coefficients.)
+```{r}
+# with 5 interactions
+sbd.slim <- lm(sbd ~ SHI + Q1B + RACETHNICITY+ GENDER*AGE + SHI*AGE + SHI*INCOME +HH18OV*RACETHNICITY + INCOME*RACETHNICITY , data = creativity)
+summary(sbd.slim)
+stack(sbd.slim$coefficients)
+```
+
+```{r}
+#plotting residuals 
+plot(sbd.slim)
+ols_plot_resid_stud_fit(sbd.slim)
+#tests for normality and constant variance.
+ols_test_normality(sbd.slim)
+ncvTest(sbd.slim)
+#checking for multicollinearity in sbd data. 
+vif(sbd.slim)
+#anova
+anova(sbd.slim)
+```
+
+
+
+
+## Artistic
+
+Stepwise regression for art
+```{r}
+#art stepwise regression with the SHI model
+art.stepwise.shi = ols_step_both_p(art.fit.shi, pent = 0.05, prem = 0.1)
+art.stepwise.shi
+```
+
+Lasso regression for art
+
+```{r}
+x=model.matrix(artistic ~ . -sbd -stem - Q5A - Q5B - Q5C - Q5D - Q5E - Q5F - Q5G - Q5H -Q5I - Q5J - Q5K - Q5L - Q5M, data = creativity)[,-1]
+y=creativity$artistic
+
+grid=10^seq(10,-2,length=100)
+```
+
+Splitting the data into training and validation sets, doing the Lasso, and cross-validation.
+```{r}
+set.seed(1)
+train=sample(1:nrow(x), nrow(x)/2)
+test=(-train)
+y.test=y[test]
+```
+
+```{r}
+lasso.mod=glmnet(x[train,],y[train], alpha = 1, lambda = grid)
+plot(lasso.mod)
+```
+
+Performing cross validation and computing the test error. 
+
+```{r}
+set.seed(1)
+cv.out=cv.glmnet(x[train,],y[train],alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+lasso.pred = predict(lasso.mod, s=bestlam, newx=x[test,])
+mean((lasso.pred-y.test)^2)
+
+```
+
+Let's see which of the lasso model coefficient estimates are zero and which ones remain. 
+
+```{r}
+out = glmnet(x,y, alpha=1, lambda = grid)
+lam1se <- cv.out$lambda.1se
+lasso.coef=predict(out, type="coefficients", s=lam1se)[1:25,]
+c(sum(lasso.coef==0), sum(lasso.coef!=0))
+lasso.coef[lasso.coef==0]
+lasso.coef[lasso.coef!=0]
+```
+
+
+ Let's run a model using just the variables resulting from lasso with lambda.1se to see which variables are significant.  (These will NOT be the lasso coefficients.)
+```{r}
+# with 5 interactions
+art.slim <- lm(artistic ~ SHI + EMPLOY + INCOME + HOUSING + GENDER + RACETHNICITY+ GENDER*AGE + SHI*AGE + SHI*INCOME +HH18OV*RACETHNICITY + INCOME*RACETHNICITY , data = creativity)
+summary(art.slim)
+stack(art.slim$coefficients)
+```
+
+```{r}
+#plotting residuals 
+plot(art.slim)
+ols_plot_resid_stud_fit(art.slim)
+#tests for normality and constant variance.
+ols_test_normality(art.slim)
+ncvTest(art.slim)
+#checking for multicollinearity in 
+vif(art.slim)
+#anova
+anova(art.slim)
+```
+
+
+## STEM
+Stepwise regression for stem
+```{r}
+#stem stepwise regression with the SHI model
+stem.stepwise.shi = ols_step_both_p(stem.fit.shi, pent = 0.05, prem = 0.1)
+stem.stepwise.shi
+```
+
+Lasso regression for stem
+
+```{r}
+x=model.matrix(stem ~ . -artistic -sbd - Q5A - Q5B - Q5C - Q5D - Q5E - Q5F - Q5G - Q5H -Q5I - Q5J - Q5K - Q5L - Q5M, data = creativity)[,-1]
+y=creativity$stem
+
+grid=10^seq(10,-2,length=100)
+```
+
+Splitting the data into training and validation sets, doing the Lasso, and cross-validation.
+```{r}
+set.seed(1)
+train=sample(1:nrow(x), nrow(x)/2)
+test=(-train)
+y.test=y[test]
+```
+
+```{r}
+lasso.mod=glmnet(x[train,],y[train], alpha = 1, lambda = grid)
+plot(lasso.mod)
+```
+
+Performing cross validation and computing the test error. 
+
+```{r}
+set.seed(1)
+cv.out=cv.glmnet(x[train,],y[train],alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+lasso.pred = predict(lasso.mod, s=bestlam, newx=x[test,])
+mean((lasso.pred-y.test)^2)
+
+```
+
+Let's see which of the lasso model coefficient estimates are zero and which ones remain. 
+
+```{r}
+out = glmnet(x,y, alpha=1, lambda = grid)
+lam1se <- cv.out$lambda.1se
+lasso.coef=predict(out, type="coefficients", s=lam1se)[1:25,]
+c(sum(lasso.coef==0), sum(lasso.coef!=0))
+lasso.coef[lasso.coef==0]
+lasso.coef[lasso.coef!=0]
+```
+
+Let's run a model using just the variables resulting from lasso with lambda.1se to see which variables are significant.  (These will NOT be the lasso coefficients.)
+```{r}
+# with 5 interactions
+stem.slim <- lm(stem ~ SHI + GENDER+ GENDER*AGE + SHI*AGE + SHI*INCOME +HH18OV*RACETHNICITY + INCOME*RACETHNICITY , data = creativity)
+summary(stem.slim)
+stack(stem.slim$coefficients)
+```
+
+```{r}
+#plotting residuals 
+plot(sbd.slim)
+ols_plot_resid_stud_fit(stem.slim)
+#tests for normality and constant variance.
+ols_test_normality(stem.slim)
+ncvTest(stem.slim)
+#checking for multicollinearity in sbd data. 
+vif(stem.slim)
+#anova
+anova(stem.slim)
+```
+
+
+
+
+
+
+
+
